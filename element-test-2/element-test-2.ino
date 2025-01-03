@@ -2,6 +2,34 @@
 #include "Adafruit_MCP23017.h"
 #include "Rotary.h"
 #include "RotaryEncOverMCP.h"
+#include <OSCBoards.h>
+#include <OSCBundle.h>
+#include <OSCData.h>
+#include <OSCMatch.h>
+#include <OSCMessage.h>
+#include <OSCTiming.h>
+
+// EOS OSC Serial
+#ifdef BOARD_HAS_USB_SERIAL
+  #include <SLIPEncodedUSBSerial.h>
+    SLIPEncodedUSBSerial SLIPSerial(thisBoardsSerialUSB);
+  #else
+  #include <SLIPEncodedSerial.h>
+    SLIPEncodedSerial SLIPSerial(Serial);
+#endif
+
+enum ConsoleType
+{
+  ConsoleNone,
+  ConsoleEos,
+};
+
+const String HANDSHAKE_QUERY = "ETCOSC?";
+const String HANDSHAKE_REPLY = "OK";
+
+ConsoleType connectedToConsole = ConsoleNone;
+unsigned long lastMessageRxTime = 0;
+bool timeoutPingSent = false;
 
 // Function Declarations
 void RotaryEncoderChanged(bool clockwise, int id);
@@ -57,6 +85,37 @@ byte colPins[COLS] = {3, 4, 27, 28, 7, 8, 9, 10, 12, 11, 13, 14, 16};
 
 bool keyState[ROWS][COLS];
 
+void sendOscMessage(const String &address, float value) {
+  OSCMessage msg(address.c_str());
+  msg.add(value);
+  SLIPSerial.beginPacket();
+  msg.send(SLIPSerial);
+  SLIPSerial.endPacket();
+}
+
+void issueEosSubscribes() {
+  // Adding a filter to only listen for pings
+  OSCMessage filter("/eos/filter/add");
+  // filter.add("/eos/out/param/*");
+  filter.add("/eos/out/ping");
+
+  SLIPSerial.beginPacket();
+  filter.send(SLIPSerial);
+  SLIPSerial.endPacket();
+}
+
+void parseOscMessage(String &msg) {
+  // If it's a handshake string, reply
+  if (msg.indexOf(HANDSHAKE_QUERY) != -1) {
+    SLIPSerial.beginPacket();
+    SLIPSerial.write((const uint8_t*)HANDSHAKE_REPLY.c_str(), (size_t)HANDSHAKE_REPLY.length());
+    SLIPSerial.endPacket();
+
+    // Subscribe to ping message
+    issueEosSubscribes();
+  }
+}
+
 void RotaryEncoderChanged(bool clockwise, int id) {
   Serial.println(
     "Encoder " + String(id) + ": "
@@ -65,72 +124,7 @@ void RotaryEncoderChanged(bool clockwise, int id) {
   // sendEncoderMovement(currentPage, id - 1, (clockwise ? -TICK_AMOUNT : TICK_AMOUNT));
 }
 
-void pollAllEncoders() {
-  uint16_t gpioAB = mcp.readGPIOAB();
-  for (int i = 0; i < numEncoders; i++) {
-    rotaryEncoders[i].feedInput(gpioAB);
-  }
-}
-
-void pollEncoderButtons() {
-  for (int i = 0; i < NUM_ENCODER_BUTTONS; i++) {
-    bool isPressed = !mcp.digitalRead(encoderButtons[i]);
-    unsigned long currentTime = millis();
-
-    // Check for debounce
-    if (isPressed != encoderButtonState[i] && (currentTime - lastDebounceTime[i] > debounceDelay)) {
-      lastDebounceTime[i] = currentTime; // Update debounce timer
-
-      if (isPressed) {
-        Serial.print("Encoder Button ");
-        Serial.print(i + 1);
-        Serial.println(" pressed");
-      }
-      encoderButtonState[i] = isPressed;
-    }
-  }
-}
-
-void setup() {
-  Serial.begin(115200);
-  Serial.println("Manual Matrix Scan Test");
-
-  Wire.setSDA(MCP_SDA);
-  Wire.setSCL(MCP_SCL);
-  Wire.begin();
-  Wire.setClock(400000);
-  mcp.begin();
-
-  // Initalize encoders
-  for (int i = 0; i < numEncoders; i++) {
-    rotaryEncoders[i].init();
-  }
-
-  // Initialize row pins to be pulled up
-  for (int i = 0; i < ROWS; i++) {
-    pinMode(rowPins[i], INPUT_PULLUP);
-  }
-
-  // Initialize encoder button pins with pull-ups
-  for (int i = 0; i < NUM_ENCODER_BUTTONS; i++) {
-    mcp.pinMode(encoderButtons[i], INPUT);
-    mcp.pullUp(encoderButtons[i], HIGH);
-    encoderButtonState[i] = false;
-    lastDebounceTime[i] = 0;
-  }
-
-  // Initialize all key states to "released"
-  for (int row = 0; row < ROWS; row++) {
-    for (int col = 0; col < COLS; col++) {
-      keyState[row][col] = false;
-    }
-  }
-}
-
-void loop() {
-  pollAllEncoders();
-  pollEncoderButtons();
-
+void pollKeyMatrix() {
   for (int row = 0; row < ROWS; row++) {
     // Activate the current row
     pinMode(rowPins[row], OUTPUT);
@@ -168,6 +162,128 @@ void loop() {
     // Deactivate the current row
     pinMode(rowPins[row], INPUT_PULLUP);
   }
+}
 
-  // delay(10); // Small delay for stability
+void pollAllEncoders() {
+  uint16_t gpioAB = mcp.readGPIOAB();
+  for (int i = 0; i < numEncoders; i++) {
+    rotaryEncoders[i].feedInput(gpioAB);
+  }
+}
+
+void pollEncoderButtons() {
+  for (int i = 0; i < NUM_ENCODER_BUTTONS; i++) {
+    bool isPressed = !mcp.digitalRead(encoderButtons[i]);
+    unsigned long currentTime = millis();
+
+    // Check for debounce
+    if (isPressed != encoderButtonState[i] && (currentTime - lastDebounceTime[i] > debounceDelay)) {
+      lastDebounceTime[i] = currentTime; // Update debounce timer
+
+      if (isPressed) {
+        Serial.print("Encoder Button ");
+        Serial.print(i + 1);
+        Serial.println(" pressed");
+      }
+      encoderButtonState[i] = isPressed;
+    }
+  }
+}
+
+void setup() {
+  // Serial.begin(115200);
+  // Serial.println("Manual Matrix Scan Test");
+
+  Wire.setSDA(MCP_SDA);
+  Wire.setSCL(MCP_SCL);
+  Wire.begin();
+  Wire.setClock(400000);
+  mcp.begin();
+
+  // Initalize encoders
+  for (int i = 0; i < numEncoders; i++) {
+    rotaryEncoders[i].init();
+  }
+
+  // Initialize row pins to be pulled up
+  for (int i = 0; i < ROWS; i++) {
+    pinMode(rowPins[i], INPUT_PULLUP);
+  }
+
+  // Initialize encoder button pins with pull-ups
+  for (int i = 0; i < NUM_ENCODER_BUTTONS; i++) {
+    mcp.pinMode(encoderButtons[i], INPUT);
+    mcp.pullUp(encoderButtons[i], HIGH);
+    encoderButtonState[i] = false;
+    lastDebounceTime[i] = 0;
+  }
+
+  // Initialize all key states to "released"
+  for (int row = 0; row < ROWS; row++) {
+    for (int col = 0; col < COLS; col++) {
+      keyState[row][col] = false;
+    }
+  }
+
+  delay(500);
+
+  SLIPSerial.begin(115200);
+  while (!Serial) {
+    delay(10);
+    continue;
+  }
+
+  SLIPSerial.beginPacket();
+  SLIPSerial.write((const uint8_t*)HANDSHAKE_REPLY.c_str(), (size_t)HANDSHAKE_REPLY.length());
+  SLIPSerial.endPacket();
+
+  issueEosSubscribes();
+
+  delay(100);
+}
+
+void loop() {
+  pollAllEncoders();
+  pollEncoderButtons();
+  pollKeyMatrix();
+
+  // Checking if OSC commands have come from EOS
+  static String curMsg;
+  int size;
+  size = SLIPSerial.available();
+  if (size > 0)
+  {
+    while (size--)
+      curMsg += (char)(SLIPSerial.read());
+  }
+  if (SLIPSerial.endofPacket())
+  {
+    parseOscMessage(curMsg);
+    lastMessageRxTime = millis();
+    timeoutPingSent = false;
+    curMsg = String();
+  }
+
+  // Checking for timeouts
+  if (lastMessageRxTime > 0)
+  {
+    unsigned long diff = millis() - lastMessageRxTime;
+    if (diff > TIMEOUT_AFTER_IDLE_INTERVAL)
+    {
+      connectedToConsole = ConsoleNone;
+      lastMessageRxTime = 0;
+      timeoutPingSent = false;
+    }
+
+    // Send a ping after 2.5s
+    if (!timeoutPingSent && diff > PING_AFTER_IDLE_INTERVAL)
+    {
+      OSCMessage ping("/eos/ping");
+      ping.add("ZenithMK2_hello");
+      SLIPSerial.beginPacket();
+      ping.send(SLIPSerial);
+      SLIPSerial.endPacket();
+      timeoutPingSent = true;
+    }
+  }
 }
