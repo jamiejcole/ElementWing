@@ -1,3 +1,7 @@
+// ETC EOS Command Wing
+// https://github.com/jamiejcole/ElementWing
+// 4th Jan 2024
+
 #include <Wire.h>
 #include "Adafruit_MCP23017.h"
 #include "Rotary.h"
@@ -18,25 +22,7 @@
     SLIPEncodedSerial SLIPSerial(Serial);
 #endif
 
-enum ConsoleType
-{
-  ConsoleNone,
-  ConsoleEos,
-};
-
-const String HANDSHAKE_QUERY = "ETCOSC?";
-const String HANDSHAKE_REPLY = "OK";
-
-ConsoleType connectedToConsole = ConsoleNone;
-unsigned long lastMessageRxTime = 0;
-bool timeoutPingSent = false;
-
-// Function Declarations
-void RotaryEncoderChanged(bool clockwise, int id);
-void sendOSCMessage(const String &address, float value);
-void sendKeyPress(const String &key, int shiftMod = -1);
-
-// MCP23017 definitions
+// Constant definitions
 #define MCP_SDA 20
 #define MCP_SCL 5
 
@@ -54,11 +40,31 @@ void sendKeyPress(const String &key, int shiftMod = -1);
 #define PING_AFTER_IDLE_INTERVAL 2500
 #define TIMEOUT_AFTER_IDLE_INTERVAL 5000
 
+enum ConsoleType
+{
+  ConsoleNone,
+  ConsoleEos,
+};
+
+// Function Declarations
+void RotaryEncoderChanged(bool clockwise, int id);
+void sendOSCMessage(const String &address, float value);
+void sendKeyPress(const String &key, int shiftMod = -1);
+void sendEncoderMovement(int page, int encoder, float ticks);
+
+// Variables
 const int encoderButtons[NUM_ENCODER_BUTTONS] = {9, 8, 11, 10};
 bool encoderButtonState[NUM_ENCODER_BUTTONS];
 unsigned long lastDebounceTime[NUM_ENCODER_BUTTONS];
 const unsigned long debounceDelay = 80; // debounce delay
 int shiftState = 0;
+
+const String HANDSHAKE_QUERY = "ETCOSC?";
+const String HANDSHAKE_REPLY = "OK";
+
+ConsoleType connectedToConsole = ConsoleNone;
+unsigned long lastMessageRxTime = 0;
+bool timeoutPingSent = false;
 
 Adafruit_MCP23017 mcp;
 
@@ -70,6 +76,15 @@ RotaryEncOverMCP rotaryEncoders[] = {
 };
 
 constexpr int numEncoders = (int)(sizeof(rotaryEncoders) / sizeof(*rotaryEncoders));
+
+const char* encoderFunctions[][4] = {
+  {"pan", "tilt", "zoom", "edge"}, // page 1
+  {"iris", "Gobo_Select", "Gobo_Select_2", "Gobo_Index/Speed"} // page 2
+};
+
+int currentPage = 0;
+int goboMode = 63.0;
+const int TICK_AMOUNT = 2;
 
 // Key switch matrix definitions
 const byte ROWS = 8;
@@ -154,7 +169,24 @@ void RotaryEncoderChanged(bool clockwise, int id) {
     "Encoder " + String(id) + ": "
     + (clockwise ? String("clockwise") : String("counter-clock-wise"))
   );
-  // sendEncoderMovement(currentPage, id - 1, (clockwise ? -TICK_AMOUNT : TICK_AMOUNT));
+  sendEncoderMovement(currentPage, id - 1, (clockwise ? -TICK_AMOUNT : TICK_AMOUNT));
+}
+
+void sendEncoderMovement(int page, int encoder, float ticks) {
+  float sentTicks = ticks;
+  if (page == 1 && (encoder == 1 || encoder == 2)) {
+    sentTicks *= 4;
+  }
+  if (page == 1 && encoder == 3) {
+    String wheelMsg("/eos/wheel/coarse/Gobo_Index\\Speed");
+    sendOSCMessage(wheelMsg, sentTicks);
+  }
+  else {
+    String wheelMsg("/eos/wheel");
+    wheelMsg.concat("/coarse/");
+    wheelMsg.concat(encoderFunctions[page][encoder]);
+    sendOSCMessage(wheelMsg, sentTicks);
+  }
 }
 
 void pollKeyMatrix() {
@@ -214,9 +246,19 @@ void pollEncoderButtons() {
       lastDebounceTime[i] = currentTime; // Update debounce timer
 
       if (isPressed) {
-        Serial.print("Encoder Button ");
-        Serial.print(i + 1);
-        Serial.println(" pressed");
+        if (i == 0) {
+          currentPage = 0;
+        }
+        else if (i == 1) {
+          currentPage = 1;
+        }
+        else if (i == 3) {
+          // sendOSC to change Gobo Mode to Index (Gobo_Mode 63) or Rot (Gobo_Mode 191)
+          String wheelMsg("/eos/wheel/coarse/Gobo_Mode");
+          float value = goboMode == 63.0 ? 191.0 : 63.0;
+          sendOSCMessage(wheelMsg, value);
+          goboMode = value;
+        }
       }
       encoderButtonState[i] = isPressed;
     }
@@ -224,9 +266,6 @@ void pollEncoderButtons() {
 }
 
 void setup() {
-  // Serial.begin(115200);
-  // Serial.println("Manual Matrix Scan Test");
-
   Wire.setSDA(MCP_SDA);
   Wire.setSCL(MCP_SCL);
   Wire.begin();
@@ -243,7 +282,7 @@ void setup() {
     pinMode(rowPins[i], INPUT_PULLUP);
   }
 
-  // Initialize encoder button pins with pull-ups
+  // Initialize encoder button pins with internal pull-ups
   for (int i = 0; i < NUM_ENCODER_BUTTONS; i++) {
     mcp.pinMode(encoderButtons[i], INPUT);
     mcp.pullUp(encoderButtons[i], HIGH);
@@ -262,10 +301,12 @@ void setup() {
 
   SLIPSerial.begin(115200);
   while (!Serial) {
+    // Wait for serial to connect
     delay(10);
     continue;
   }
 
+  // Send initial handshake reply
   SLIPSerial.beginPacket();
   SLIPSerial.write((const uint8_t*)HANDSHAKE_REPLY.c_str(), (size_t)HANDSHAKE_REPLY.length());
   SLIPSerial.endPacket();
@@ -280,7 +321,7 @@ void loop() {
   pollEncoderButtons();
   pollKeyMatrix();
 
-  // Checking if OSC commands have come from EOS
+  // Checking if any OSC commands have come from EOS
   static String curMsg;
   int size;
   size = SLIPSerial.available();
