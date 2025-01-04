@@ -1,10 +1,10 @@
 const char* keys[ROWS][COLS] = {
-  {"displays", "address", "open_ml_controls", "cia_softkey1", "cia_softkey2", "cia_softkey3", "cia_softkey4", "cia_softkey5", "cia_softkey6", "more_softkeys", "live", "blind", "staging_mode"},
+  {"displays", "address", "open_ml_controls", "softkey_1", "softkey_2", "softkey_3", "softkey_4", "softkey_5", "softkey_6", "more_softkeys", "live", "blind", "staging_mode"},
   {"macro", "help", "learn", "query", "copy_to", "recall_from", "label", "macro_1", "about", "park", "escape", "page_up", "select"},
-  {"delete", "path", "effect", "gotocue", "block", "assert", "undo", "highlight", "fan_", "capture", "page_left", "page_down", "page_right"},
+  {"delete", "path", "effect", "go_to_cue", "block", "assert", "undo", "highlight", "fan_", "capture", "page_left", "page_down", "page_right"},
   {"part", "cue", "record", "+", "thru", "-", "\\", "mark", "sneak", "select_last"},
   {"intensity_palette", "focus_palette", "record_only", "7", "8", "9", "rem_dim", "+%", "home", "select_manual"},
   {"color_palette", "beam_palette", "update", "4", "5", "6", "out", "-%", "trace", "select_active"},
-  {"preset", "sub", "group", "1", "2", "3", "full", "level", "cueonlytrack", "last", "", "stopback"},
-  {"shift", "delay", "time", "clear", "0", ".", "at", "enter", "", "next", "", "go_0"}
+  {"preset", "sub", "group", "1", "2", "3", "full", "level", "cueonlytrack", "last", "", "stop"},
+  {"shift", "delay", "time", "clear_cmd", "0", ".", "at", "enter", "", "next", "", "go_0"}
 };

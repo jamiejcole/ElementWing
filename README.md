@@ -1,2 +1,2 @@
 # ElementWing
-ETC EOS Element Wing custom PCB project
+## A DIY Command Wing built for controlling ETC EOS

@@ -33,6 +33,8 @@ bool timeoutPingSent = false;
 
 // Function Declarations
 void RotaryEncoderChanged(bool clockwise, int id);
+void sendOSCMessage(const String &address, float value);
+void sendKeyPress(const String &key, int shiftMod = -1);
 
 // MCP23017 definitions
 #define MCP_SDA 20
@@ -48,10 +50,15 @@ void RotaryEncoderChanged(bool clockwise, int id);
 #define MCP_EC4_B 2
 
 #define NUM_ENCODER_BUTTONS 4
+#define OSC_BUF_MAX_SIZE 512
+#define PING_AFTER_IDLE_INTERVAL 2500
+#define TIMEOUT_AFTER_IDLE_INTERVAL 5000
+
 const int encoderButtons[NUM_ENCODER_BUTTONS] = {9, 8, 11, 10};
 bool encoderButtonState[NUM_ENCODER_BUTTONS];
 unsigned long lastDebounceTime[NUM_ENCODER_BUTTONS];
 const unsigned long debounceDelay = 80; // debounce delay
+int shiftState = 0;
 
 Adafruit_MCP23017 mcp;
 
@@ -69,14 +76,14 @@ const byte ROWS = 8;
 const byte COLS = 13;
 
 const char* keys[ROWS][COLS] = {
-  {"displays", "address", "open_ml_controls", "cia_softkey1", "cia_softkey2", "cia_softkey3", "cia_softkey4", "cia_softkey5", "cia_softkey6", "more_softkeys", "live", "blind", "staging_mode"},
+  {"displays", "address", "open_ml_controls", "softkey_1", "softkey_2", "softkey_3", "softkey_4", "softkey_5", "softkey_6", "more_softkeys", "live", "blind", "staging_mode"},
   {"macro", "help", "learn", "query", "copy_to", "recall_from", "label", "macro_1", "about", "park", "escape", "page_up", "select"},
-  {"delete", "path", "effect", "gotocue", "block", "assert", "undo", "highlight", "fan_", "capture", "page_left", "page_down", "page_right"},
+  {"delete", "path", "effect", "go_to_cue", "block", "assert", "undo", "highlight", "fan_", "capture", "page_left", "page_down", "page_right"},
   {"part", "cue", "record", "+", "thru", "-", "\\", "mark", "sneak", "select_last"},
   {"intensity_palette", "focus_palette", "record_only", "7", "8", "9", "rem_dim", "+%", "home", "select_manual"},
   {"color_palette", "beam_palette", "update", "4", "5", "6", "out", "-%", "trace", "select_active"},
-  {"preset", "sub", "group", "1", "2", "3", "full", "level", "cueonlytrack", "last", "", "stopback"},
-  {"shift", "delay", "time", "clear", "0", ".", "at", "enter", "", "next", "", "go_0"}
+  {"preset", "sub", "group", "1", "2", "3", "full", "level", "cueonlytrack", "last", "", "stop"},
+  {"shift", "delay", "time", "clear_cmd", "0", ".", "at", "enter", "", "next", "", "go_0"}
 };
 
 
@@ -116,6 +123,32 @@ void parseOscMessage(String &msg) {
   }
 }
 
+void sendOSCMessage(const String &address, float value) {
+  OSCMessage msg(address.c_str());
+  msg.add(value);
+  SLIPSerial.beginPacket();
+  msg.send(SLIPSerial);
+  SLIPSerial.endPacket();
+}
+
+void sendKeyPress(const String &key, int shiftMod) {
+  String msg = "/eos/key/" + key;
+  if (shiftMod == 1) {
+    sendOSCMessage(msg, 1.0);
+    shiftState = 1;
+  }
+  else if (shiftMod == 0) {
+    sendOSCMessage(msg, 0.0);
+    shiftState = 0;
+  }
+  else {
+    OSCMessage keyMsg(msg.c_str());
+    SLIPSerial.beginPacket();
+    keyMsg.send(SLIPSerial);
+    SLIPSerial.endPacket();
+  }
+}
+
 void RotaryEncoderChanged(bool clockwise, int id) {
   Serial.println(
     "Encoder " + String(id) + ": "
@@ -139,23 +172,23 @@ void pollKeyMatrix() {
 
       // Check for state changes
       if (isPressed && !keyState[row][col]) {
-        // Key just pressed
         keyState[row][col] = true;
-        Serial.print("Key ");
-        Serial.print(keys[row][col]);
-        Serial.print(" pressed at row ");
-        Serial.print(row);
-        Serial.print(", column ");
-        Serial.println(col);
+
+        // Serial.print(keys[row][col]); pressed
+
+        if (keys[row][col] == "shift") {
+          sendKeyPress(keys[row][col], 1);
+        }
+        else {
+          sendKeyPress(keys[row][col]);
+        }
       } else if (!isPressed && keyState[row][col]) {
-        // Key just released
         keyState[row][col] = false;
-        Serial.print("Key ");
-        Serial.print(keys[row][col]);
-        Serial.print(" released at row ");
-        Serial.print(row);
-        Serial.print(", column ");
-        Serial.println(col);
+
+        // Serial.print(keys[row][col]); released
+        if (keys[row][col] == "shift") {
+          sendKeyPress(keys[row][col], 0);
+        }
       }
     }
 
@@ -279,7 +312,7 @@ void loop() {
     if (!timeoutPingSent && diff > PING_AFTER_IDLE_INTERVAL)
     {
       OSCMessage ping("/eos/ping");
-      ping.add("ZenithMK2_hello");
+      ping.add("ElementWing_hello");
       SLIPSerial.beginPacket();
       ping.send(SLIPSerial);
       SLIPSerial.endPacket();
