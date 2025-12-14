@@ -12,6 +12,7 @@
 #include <OSCMatch.h>
 #include <OSCMessage.h>
 #include <OSCTiming.h>
+#include "hardware/watchdog.h"
 
 // EOS OSC Serial
 #ifdef BOARD_HAS_USB_SERIAL
@@ -106,6 +107,8 @@ byte rowPins[ROWS] = {17, 18, 19, 21, 22, 23, 24, 25};
 byte colPins[COLS] = {3, 4, 27, 28, 7, 8, 9, 10, 12, 11, 13, 14, 16};
 
 bool keyState[ROWS][COLS];
+unsigned long keyLastChange[ROWS][COLS];
+const unsigned long keyDebounceDelay = 40;
 
 void sendOscMessage(const String &address, float value) {
   OSCMessage msg(address.c_str());
@@ -190,42 +193,52 @@ void sendEncoderMovement(int page, int encoder, float ticks) {
 }
 
 void pollKeyMatrix() {
+  // static array to remember the last raw read for each key across invocations
+  static bool lastRaw[ROWS][COLS];
+  static bool inited = false;
+  unsigned long now = millis();
+
+  // Initialize lastRaw on first call to the current stable state
+  if (!inited) {
+    for (int r = 0; r < ROWS; r++) {
+      for (int c = 0; c < COLS; c++) {
+        lastRaw[r][c] = false;
+      }
+    }
+    inited = true;
+  }
+
   for (int row = 0; row < ROWS; row++) {
     // Activate the current row
-    pinMode(rowPins[row], OUTPUT);
     digitalWrite(rowPins[row], LOW);
 
-    for (int col = 0; col < COLS; col++) {
-      // Set column pins as inputs with pullups
-      pinMode(colPins[col], INPUT_PULLUP);
+    // give the row output a short time to settle before reading columns
+    delayMicroseconds(5);
 
-      // Read the state of the key
+    for (int col = 0; col < COLS; col++) {
       bool isPressed = (digitalRead(colPins[col]) == LOW);
 
-      // Check for state changes
-      if (isPressed && !keyState[row][col]) {
-        keyState[row][col] = true;
+      if (isPressed != lastRaw[row][col]) {
+        lastRaw[row][col] = isPressed;
+        keyLastChange[row][col] = now;
+      }
 
-        // Serial.print(keys[row][col]); pressed
+      if (isPressed != keyState[row][col] &&
+          (now - keyLastChange[row][col]) >= keyDebounceDelay) {
 
-        if (keys[row][col] == "shift") {
-          sendKeyPress(keys[row][col], 1);
-        }
-        else {
-          sendKeyPress(keys[row][col]);
-        }
-      } else if (!isPressed && keyState[row][col]) {
-        keyState[row][col] = false;
+        keyState[row][col] = isPressed;
 
-        // Serial.print(keys[row][col]); released
-        if (keys[row][col] == "shift") {
+        if (isPressed) {
+          sendKeyPress(keys[row][col],
+                       keys[row][col] == "shift" ? 1 : -1);
+        } else if (keys[row][col] == "shift") {
           sendKeyPress(keys[row][col], 0);
         }
       }
     }
 
     // Deactivate the current row
-    pinMode(rowPins[row], INPUT_PULLUP);
+    digitalWrite(rowPins[row], HIGH);
   }
 }
 
@@ -265,7 +278,19 @@ void pollEncoderButtons() {
   }
 }
 
+void setupMatrixPins() {
+  for (int r = 0; r < ROWS; r++) {
+    pinMode(rowPins[r], OUTPUT);
+    digitalWrite(rowPins[r], HIGH);  // idle
+  }
+
+  for (int c = 0; c < COLS; c++) {
+    pinMode(colPins[c], INPUT_PULLUP);
+  }
+}
+
 void setup() {
+  watchdog_enable(3000, true);
   Wire.setSDA(MCP_SDA);
   Wire.setSCL(MCP_SCL);
   Wire.begin();
@@ -277,10 +302,7 @@ void setup() {
     rotaryEncoders[i].init();
   }
 
-  // Initialize row pins to be pulled up
-  for (int i = 0; i < ROWS; i++) {
-    pinMode(rowPins[i], INPUT_PULLUP);
-  }
+  setupMatrixPins();
 
   // Initialize encoder button pins with internal pull-ups
   for (int i = 0; i < NUM_ENCODER_BUTTONS; i++) {
@@ -293,6 +315,7 @@ void setup() {
   // Initialize all key states to "released"
   for (int row = 0; row < ROWS; row++) {
     for (int col = 0; col < COLS; col++) {
+      keyLastChange[row][col] = 0;
       keyState[row][col] = false;
     }
   }
@@ -320,6 +343,7 @@ void loop() {
   pollAllEncoders();
   pollEncoderButtons();
   pollKeyMatrix();
+  watchdog_update();
 
   // Checking if any OSC commands have come from EOS
   static String curMsg;
