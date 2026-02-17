@@ -1,0 +1,210 @@
+[
+  [
+    {
+      "a": 7,
+      "f": 2
+    },
+    "Displays",
+    "Address Patch",
+    "ML Controls",
+    {
+      "x": 0.5
+    },
+    "S1",
+    "S2",
+    "S3",
+    {
+      "x": 0.5
+    },
+    "S4",
+    "S5",
+    "S6",
+    {
+      "x": 0.5
+    },
+    "More SK",
+    {
+      "x": 0.5
+    },
+    "Live",
+    "Blind",
+    "Staging"
+  ],
+  [
+    {
+      "y": 0.5
+    },
+    "Macro",
+    "Help",
+    "Learn",
+    {
+      "x": 0.5
+    },
+    "Query",
+    "Copy To",
+    "Recall From",
+    {
+      "x": 0.5
+    },
+    "Label",
+    "",
+    "About",
+    {
+      "x": 0.5
+    },
+    "Park",
+    {
+      "x": 0.5
+    },
+    "Escape",
+    "Page▲",
+    "Select"
+  ],
+  [
+    "Delete",
+    "Path",
+    "Effect",
+    {
+      "x": 0.5
+    },
+    "Go To Cue",
+    "Block",
+    "Assert",
+    {
+      "x": 0.5
+    },
+    "Undo",
+    "High",
+    "Fan",
+    {
+      "x": 0.5
+    },
+    "Capture",
+    {
+      "x": 0.5
+    },
+    "Page ◀",
+    "Page ▼",
+    "Page ▶"
+  ],
+  [
+    {
+      "y": 0.5
+    },
+    "Part",
+    "Cue",
+    "Record",
+    {
+      "x": 0.5
+    },
+    "+",
+    "Thru",
+    "-",
+    {
+      "x": 0.5
+    },
+    "/",
+    "Mark",
+    "Sneak",
+    {
+      "x": 0.5
+    },
+    "Select Last"
+  ],
+  [
+    "Int Palette",
+    "Focus Palette",
+    "Record Only",
+    {
+      "x": 0.5
+    },
+    "7",
+    "8",
+    "9",
+    {
+      "x": 0.5
+    },
+    "Rem Dim",
+    "+ %",
+    "Home",
+    {
+      "x": 0.5
+    },
+    "Select Manual"
+  ],
+  [
+    "Color Palette",
+    "Beam Palette",
+    "Update",
+    {
+      "x": 0.5
+    },
+    "4",
+    "5",
+    "6",
+    {
+      "x": 0.5
+    },
+    "Out",
+    "- %",
+    "Trace",
+    {
+      "x": 0.5
+    },
+    "Select Active"
+  ],
+  [
+    "Preset",
+    "Sub",
+    "Group",
+    {
+      "x": 0.5
+    },
+    "1",
+    "2",
+    "3",
+    {
+      "x": 0.5
+    },
+    "Full",
+    "Level",
+    "Q Only Track",
+    {
+      "x": 0.5
+    },
+    "Last",
+    {
+      "x": 0.75,
+      "w": 2.5
+    },
+    "Stop"
+  ],
+  [
+    "Shift",
+    "Delay",
+    "Time",
+    {
+      "x": 0.5
+    },
+    "Clear",
+    "0",
+    ".",
+    {
+      "x": 0.5
+    },
+    "At",
+    {
+      "w": 2
+    },
+    "Enter",
+    {
+      "x": 0.5
+    },
+    "Next",
+    {
+      "x": 0.75,
+      "w": 2.5
+    },
+    "Go"
+  ]
+]
